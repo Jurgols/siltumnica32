@@ -6,13 +6,8 @@
 #include <PubSubClient.h>
 #include <AM232X.h>
 #include <ESPmDNS.h>
-#include <AM232X.h>
 #include "Wire.h"
 #include "time.h"
-
-
-WiFiMulti wifiMulti;
-AM232X AM2320;
 
 
 #define lightPin 19
@@ -25,6 +20,9 @@ AM232X AM2320;
 #define mistPin 16
 #define waterPin 4
 #define lightInterupt 15
+
+WiFiMulti wifiMulti;
+AM232X AM2320;
 
 // Volumetric water content calculation parameters
 float slope = 2.48; // slope from linear fit
@@ -192,10 +190,10 @@ void setup() {
   pinMode(lightInterupt, INPUT);
   pinMode(levelPin, INPUT);
   pinMode(capPin, OUTPUT);
-  digitalWrite(capPin, LOW);
+  digitalWrite(capPin, HIGH);
   digitalWrite(lightPin, LOW);
   digitalWrite(heatPin, LOW);
-  digitalWrite(fanOutPin, LOW);
+  digitalWrite(fanOutPin, HIGH);
   digitalWrite(fainInPin, HIGH);
   digitalWrite(mistPin, LOW);
   digitalWrite(waterPin, LOW);
@@ -273,15 +271,17 @@ void setup() {
 }
 
 unsigned long long recconectMillis = 0;
-int recconectInterval = 600000;
+int reconnectInterval = 600000;
+unsigned long long previousMillis = 0;
 
 void loop() {
   unsigned long long currentMillis = millis();
 
   ArduinoOTA.handle();
-  if ((!mqtt_client.connected()) && (currentMillis - recconectInterval >= recconectInterval)) 
+  if ((!mqtt_client.connected()) && (currentMillis - previousMillis >= reconnectInterval)) 
   {
     reconnect();
+    previousMillis = currentMillis;
   }
   mqtt_client.loop();
   if (wifiMulti.run() != WL_CONNECTED) {
@@ -289,6 +289,10 @@ void loop() {
   }
   time_t now;
   time(&now);
+  if (digitalRead(lightInterupt))
+  {
+    Serial.print("Interupted");
+  }
   timeinfo = localtime(&now);
   growLights.Update();
   sensorData.Upload();
