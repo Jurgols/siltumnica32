@@ -19,7 +19,7 @@
 #define capPin 32
 #define mistPin 16
 #define waterPin 4
-#define lightInterupt 15
+#define lightInterupt 2
 
 WiFiMulti wifiMulti;
 AM232X AM2320;
