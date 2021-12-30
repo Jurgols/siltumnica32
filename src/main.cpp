@@ -61,6 +61,7 @@ PubSubClient mqtt_client(espClient);
 //Deconstruct ctime struct
 struct tm * timeinfo;
 
+
 // Soil sensor mesure voltage
 float soil_voltage(uint8_t pin){
   int soil_adc = analogRead(pin);
@@ -75,6 +76,30 @@ float soil_vwc(float voltage){
 
 void reconnect();
 void callback(char*, byte*, unsigned int);
+
+void browseService(const char * service, const char * proto){
+    Serial.printf("Browsing for service _%s._%s.local. ... ", service, proto);
+    int n = MDNS.queryService(service, proto);
+    if (n == 0) {
+        Serial.println("no services found");
+    } else {
+        Serial.print(n);
+        Serial.println(" service(s) found");
+        for (int i = 0; i < n; ++i) {
+            // Print details for each service found
+            Serial.print("  ");
+            Serial.print(i + 1);
+            Serial.print(": ");
+            Serial.print(MDNS.hostname(i));
+            Serial.print(" (");
+            Serial.print(MDNS.IP(i));
+            Serial.print(":");
+            Serial.print(MDNS.port(i));
+            Serial.println(")");
+        }
+    }
+    Serial.println();
+}
 
 
 class InfluxData
@@ -211,47 +236,55 @@ void setup() {
   }
   Serial.println();
 
-  ArduinoOTA.setHostname("siltumnica");
+   // Port defaults to 3232
+  // ArduinoOTA.setPort(3232);
+
+  // Hostname defaults to esp3232-[MAC]
+  ArduinoOTA.setHostname("siltumnica32");
+
+  // No authentication by default
   ArduinoOTA.setPassword("esp8266");
-  ArduinoOTA.onStart([]() {
-    Serial.println("Start");
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+  ArduinoOTA
+    .onStart([]() {
+      String type;
+      if (ArduinoOTA.getCommand() == U_FLASH)
+        type = "sketch";
+      else // U_SPIFFS
+        type = "filesystem";
+
+      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+      Serial.println("Start updating " + type);
+    })
+    .onEnd([]() {
+      Serial.println("\nEnd");
+    })
+    .onProgress([](unsigned int progress, unsigned int total) {
+      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    })
+    .onError([](ota_error_t error) {
+      Serial.printf("Error[%u]: ", error);
+      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+      else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    });
+
   ArduinoOTA.begin();
-  Serial.println("OTA ready");
+
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
 
   if (!MDNS.begin(hostString)) {
     Serial.println("Error setting up MDNS responder!");
   }
   Serial.println("mDNS responder started");
-
-  Serial.println("Sending mDNS query");
-  int n = MDNS.queryService("mqtt", "tcp"); 
-  Serial.println("mDNS query done");
-  if (n == 0) {
-    Serial.println("no services found");
-  }
-  else {
-    Serial.print(n);
-    Serial.println(" service(s) found");
-    Serial.print(MDNS.IP(0));
-    //not working
-    //mqtt_server = toCharArray(MDNS.IP(0)[0]);
-  }
-
   //Sync time with ntp
   timeSync(TZ_INFO, "pool.ntp.org", "time.nis.gov");
   // Add constant tags - only once
@@ -278,6 +311,8 @@ void loop() {
   unsigned long long currentMillis = millis();
 
   ArduinoOTA.handle();
+  browseService("mqtt", "tcp");
+  
   if ((!mqtt_client.connected()) && (currentMillis - previousMillis >= reconnectInterval)) 
   {
     reconnect();
