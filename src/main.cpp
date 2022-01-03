@@ -4,10 +4,12 @@
 #include <InfluxDbCloud.h>
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
-#include <AM232X.h>
+// #include <TelnetStream.h>
 #include <ESPmDNS.h>
 #include "Wire.h"
 #include "time.h"
+#include "SHTSensor.h"
+#include <AM232X.h>
 
 
 #define lightPin 19
@@ -23,7 +25,7 @@
 
 WiFiMulti wifiMulti;
 AM232X AM2320;
-
+SHTSensor sht;
 // Volumetric water content calculation parameters
 float slope = 2.48; // slope from linear fit
 float intercept = -0.72;
@@ -61,6 +63,22 @@ PubSubClient mqtt_client(espClient);
 //Deconstruct ctime struct
 struct tm * timeinfo;
 
+
+//Saturation vapor pressure
+float calculate_svp(float temp){
+  float leaf_temp = temp - 2.0;
+  return (610.7*pow(10, ((7.5*leaf_temp)/(237.3+leaf_temp))))/1000;
+}
+
+//Air vapor pressure
+float calculate_avp(float temp, float humidity){
+  return calculate_svp(temp)*(humidity/100);
+}
+
+//Vapor pressure deficit
+float calculate_vpd(float temp, float humidity){
+  return calculate_svp(temp)-calculate_avp(temp, humidity);
+}
 
 // Soil sensor mesure voltage
 float soil_voltage(uint8_t pin){
@@ -117,7 +135,6 @@ class InfluxData
     if(currentMillis - previousMillis >= interval)
     {
       AM2320.begin();
-      digitalWrite(capPin, HIGH);
       timeSync(TZ_INFO, "pool.ntp.org", "time.nis.gov");
       sensor.clearFields();
       // Report RSSI of currently connected network
@@ -128,9 +145,15 @@ class InfluxData
       sensor.addField("rssi", WiFi.RSSI());
       sensor.addField("air_temperature", AM2320.getTemperature());
       sensor.addField("air_humidity", AM2320.getHumidity());
+      sensor.addField("VPD", calculate_vpd(AM2320.getTemperature(), AM2320.getHumidity()));
+      sensor.addField("air_temperature_out", sht.getTemperature());
+      sensor.addField("air_humidity_out", sht.getHumidity());
+      //TelnetStream.print(sht.getHumidity());
+      // sensor.addField("SVP", calculate_svp(AM2320.getTemperature()));
+      // sensor.addField("AVP", calculate_avp(AM2320.getTemperature(), AM2320.getHumidity()));
       sensor.addField("soil_vwc", soil_vwc(soil_voltage(soilPin)));
       sensor.addField("soil_moisture_voltage", soil_voltage(soilPin));
-      digitalWrite(capPin, LOW);
+      sensor.addField("mister_water_volume", map(analogRead(35),3847,2358,0, 100));
       // Write point
       if (!client.writePoint(sensor)) {
         Serial.print("InfluxDB write failed: ");
@@ -161,6 +184,9 @@ class Lights
       if((timeinfo->tm_hour >= start_hour) || (timeinfo->tm_hour < end_hour))
       {
         digitalWrite(light_pin, HIGH);
+        digitalWrite(fanOutPin, HIGH);
+        digitalWrite(fainInPin, HIGH);
+        digitalWrite(mistPin, HIGH);
       }
       else
       {
@@ -172,6 +198,9 @@ class Lights
         else
         {
           digitalWrite(lightPin, LOW);
+          digitalWrite(fanOutPin, LOW);
+          digitalWrite(fainInPin, LOW);
+          digitalWrite(mistPin, LOW);
         }
     //Turn on at predefined interval
       }
@@ -181,6 +210,9 @@ class Lights
       if((timeinfo->tm_hour >=start_hour) && (timeinfo->tm_hour < end_hour))
       {
         digitalWrite(light_pin, HIGH);
+        digitalWrite(fanOutPin, HIGH);
+        digitalWrite(fainInPin, HIGH);
+        digitalWrite(mistPin, HIGH);
       }
       else
       {
@@ -192,6 +224,9 @@ class Lights
         else
         {
           digitalWrite(lightPin, LOW);
+          digitalWrite(fanOutPin, LOW);
+          digitalWrite(fainInPin, LOW);
+          digitalWrite(mistPin, LOW);
         }
       }
 
@@ -205,6 +240,8 @@ InfluxData sensorData(5);
 void setup() {
   Serial.begin(115200);
   Wire.begin();
+  //TelnetStream.begin();
+  //Default pin states
   pinMode(lightPin, OUTPUT);
   pinMode(heatPin, OUTPUT);
   pinMode(fanOutPin, OUTPUT);
@@ -301,6 +338,14 @@ void setup() {
   }
   mqtt_client.setServer(mqtt_server, 1883);
   mqtt_client.setCallback(callback);
+
+  if (sht.init()) {
+     Serial.print("sht.init(): success\n");
+  } else {
+      Serial.print("sht.init(): failed\n");
+  }
+  sht.setAccuracy(SHTSensor::SHT_ACCURACY_MEDIUM);
+
 }
 
 unsigned long long recconectMillis = 0;
@@ -311,7 +356,7 @@ void loop() {
   unsigned long long currentMillis = millis();
 
   ArduinoOTA.handle();
-  browseService("mqtt", "tcp");
+  // browseService("mqtt", "tcp");
   
   if ((!mqtt_client.connected()) && (currentMillis - previousMillis >= reconnectInterval)) 
   {
