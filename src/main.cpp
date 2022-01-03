@@ -8,8 +8,9 @@
 #include <ESPmDNS.h>
 #include "Wire.h"
 #include "time.h"
-#include "SHTSensor.h"
 #include <AM232X.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
 
 
 #define lightPin 19
@@ -25,7 +26,7 @@
 
 WiFiMulti wifiMulti;
 AM232X AM2320;
-SHTSensor sht;
+Adafruit_BME280 bme;
 // Volumetric water content calculation parameters
 float slope = 2.48; // slope from linear fit
 float intercept = -0.72;
@@ -146,8 +147,8 @@ class InfluxData
       sensor.addField("air_temperature", AM2320.getTemperature());
       sensor.addField("air_humidity", AM2320.getHumidity());
       sensor.addField("VPD", calculate_vpd(AM2320.getTemperature(), AM2320.getHumidity()));
-      sensor.addField("air_temperature_out", sht.getTemperature());
-      sensor.addField("air_humidity_out", sht.getHumidity());
+      sensor.addField("air_temperature_out", bme.readTemperature());
+      sensor.addField("air_humidity_out", bme.readHumidity());
       //TelnetStream.print(sht.getHumidity());
       // sensor.addField("SVP", calculate_svp(AM2320.getTemperature()));
       // sensor.addField("AVP", calculate_avp(AM2320.getTemperature(), AM2320.getHumidity()));
@@ -259,7 +260,15 @@ void setup() {
   digitalWrite(fainInPin, HIGH);
   digitalWrite(mistPin, LOW);
   digitalWrite(waterPin, LOW);
-  //setup mDNS responder id 
+  //setup bme280
+  if (! bme.begin(0x76, &Wire)) {
+        Serial.println("Could not find a valid BME280 sensor, check wiring!");
+    }
+  bme.setSampling(Adafruit_BME280::MODE_FORCED,
+                    Adafruit_BME280::SAMPLING_X1, // temperature
+                    Adafruit_BME280::SAMPLING_X1, // pressure
+                    Adafruit_BME280::SAMPLING_X1, // humidity
+                    Adafruit_BME280::FILTER_OFF   );
 
   // Connect WiFi
   Serial.println("Connecting to WiFi");
@@ -338,13 +347,6 @@ void setup() {
   }
   mqtt_client.setServer(mqtt_server, 1883);
   mqtt_client.setCallback(callback);
-
-  if (sht.init()) {
-     Serial.print("sht.init(): success\n");
-  } else {
-      Serial.print("sht.init(): failed\n");
-  }
-  sht.setAccuracy(SHTSensor::SHT_ACCURACY_MEDIUM);
 
 }
 
