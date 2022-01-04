@@ -136,6 +136,7 @@ class InfluxData
     if(currentMillis - previousMillis >= interval)
     {
       AM2320.begin();
+      bme.takeForcedMeasurement();
       timeSync(TZ_INFO, "pool.ntp.org", "time.nis.gov");
       sensor.clearFields();
       // Report RSSI of currently connected network
@@ -154,7 +155,7 @@ class InfluxData
       // sensor.addField("AVP", calculate_avp(AM2320.getTemperature(), AM2320.getHumidity()));
       sensor.addField("soil_vwc", soil_vwc(soil_voltage(soilPin)));
       sensor.addField("soil_moisture_voltage", soil_voltage(soilPin));
-      sensor.addField("mister_water_volume", map(analogRead(35),3847,2358,0, 100));
+      sensor.addField("mister_water_volume", constrain(map(analogRead(35),3847,2358,0, 100),0,100));
       // Write point
       if (!client.writePoint(sensor)) {
         Serial.print("InfluxDB write failed: ");
