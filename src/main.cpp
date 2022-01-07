@@ -5,6 +5,7 @@
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
 #include <ESPmDNS.h>
+#include <SimpleKalmanFilter.h>
 #include "Wire.h"
 #include "time.h"
 #include <AM232X.h>
@@ -19,13 +20,16 @@
 #define heatPin 18
 #define fanOutPin 5
 #define fainInPin 17
-#define soilPin 34
-#define levelPin 35
-#define capPin 32
+#define cap_soilPin 34
+#define res_soilPin 35
+#define capOnPin 32
+#define resOnPin 33
 #define mistPin 16
 #define waterPin 4
-#define lightInterupt 2
-#define ledTest 26
+#define lightInterupt 23
+#define fanInTwo 26
+
+#define DS18_pin 12
 
 WiFiMulti wifiMulti;
 AM232X AM2320;
@@ -35,6 +39,9 @@ float slope = 2.48; // slope from linear fit
 float intercept = -0.72;
 
 int fanInSpeed = 127;
+
+float cap_moisture;
+float res_moisture;
 //InfuxDB device name
 #define DEVICE "Siltumica_ESP32"
 // InfluxDB  server url. Don't use localhost, always server name or ip address.
@@ -64,6 +71,10 @@ PubSubClient mqtt_client(espClient);
 //Deconstruct ctime struct
 struct tm * timeinfo;
 
+//DS18B20 class init
+OneWire oneWire(DS18_pin);
+// pass onewire object to Dallas Temp class
+DallasTemperature ds_temp(&oneWire);
 
 //Saturation vapor pressure
 float calculate_svp(float temp){
@@ -120,6 +131,60 @@ void browseService(const char * service, const char * proto){
     Serial.println();
 }
 
+class SoilMoisture
+{
+ long interval;
+ long interval2;
+ unsigned long previousMillis;
+ float moistureEstimate;
+ uint8_t pin;
+ uint8_t powerPin;
+ int sensorType;
+ private:
+ SimpleKalmanFilter* kalmanObj;
+ public:
+ SoilMoisture(uint8_t analog_pin, uint8_t powerPin, int sensorType, unsigned int interval, int mea_err, int est_err, float variance)
+ {
+  kalmanObj = new SimpleKalmanFilter(mea_err, est_err, variance);
+  this->interval = interval;
+  this->interval2 = interval + 100;
+  this->pin = analog_pin;
+  this->powerPin = powerPin;
+  this->sensorType = sensorType;
+  previousMillis = interval;
+  moistureEstimate = 0;
+ }
+
+void Update(){
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval){
+    digitalWrite(powerPin, HIGH);
+    if(currentMillis - previousMillis >= interval2){
+      float soilvwc;
+      if(sensorType){
+        soilvwc = soil_vwc(soil_voltage(pin));
+        //soilvwc = constrain(map(analogRead(pin), 500, 3800, 100, 0),0,100);
+         }
+      else{
+        soilvwc = constrain(map(analogRead(pin), 550, 3800, 0, 100),0,100);
+      }
+      moistureEstimate = kalmanObj->updateEstimate(soilvwc);
+      digitalWrite(powerPin, LOW);
+    
+      previousMillis = currentMillis;
+    }
+  }
+  }
+  float readVWC(){
+    return moistureEstimate;
+  }
+
+
+
+};
+
+SoilMoisture capacativeMoisture(cap_soilPin,capOnPin,1,5000,6,5,0.1);
+SoilMoisture resistiveMoisture(res_soilPin,resOnPin,0,5000,3,3,0.1);
 
 class InfluxData
 {
@@ -137,25 +202,38 @@ class InfluxData
     {
       AM2320.begin();
       bme.takeForcedMeasurement();
+      ds_temp.requestTemperatures();
+      float tempC = ds_temp.getTempCByIndex(0);
       timeSync(TZ_INFO, "pool.ntp.org", "time.nis.gov");
       sensor.clearFields();
-      // Report RSSI of currently connected network
       sensor.addField("rssi", WiFi.RSSI());
-      // Print what are we exactly writing
-      Serial.print("Writing: ");
-      Serial.println(client.pointToLineProtocol(sensor));
       sensor.addField("rssi", WiFi.RSSI());
       sensor.addField("air_temperature", AM2320.getTemperature());
       sensor.addField("air_humidity", AM2320.getHumidity());
       sensor.addField("VPD", calculate_vpd(AM2320.getTemperature(), AM2320.getHumidity()));
       sensor.addField("air_temperature_out", bme.readTemperature());
       sensor.addField("air_humidity_out", bme.readHumidity());
-      //TelnetStream.print(sht.getHumidity());
-      // sensor.addField("SVP", calculate_svp(AM2320.getTemperature()));
-      // sensor.addField("AVP", calculate_avp(AM2320.getTemperature(), AM2320.getHumidity()));
-      sensor.addField("soil_vwc", soil_vwc(soil_voltage(soilPin)));
-      sensor.addField("soil_moisture_voltage", soil_voltage(soilPin));
-      sensor.addField("mister_water_volume", constrain(map(analogRead(35),3847,2358,0, 100),0,100));
+      sensor.addField("soil_vwc", capacativeMoisture.readVWC());
+      Serial.print("Resistive InfluxDB: ");
+      Serial.println(resistiveMoisture.readVWC());
+      sensor.addField("resistive_soil_vwc", resistiveMoisture.readVWC());
+      if(tempC != DEVICE_DISCONNECTED_C){
+          Serial.print("Temperature for the device 1 (index 0) is: ");
+          sensor.addField("soil_temp", tempC);
+          Serial.println(tempC);
+      } 
+      else
+      {
+        Serial.println("Error: Could not read temperature data");
+      }
+      
+      Serial.print("Soil temp:");
+      Serial.println(tempC);
+
+      // Print what are we exactly writing
+      Serial.print("Writing: ");
+      Serial.println(client.pointToLineProtocol(sensor));
+      
       // Write point
       if (!client.writePoint(sensor)) {
         Serial.print("InfluxDB write failed: ");
@@ -237,7 +315,8 @@ class Lights
 };
 
 Lights growLights(lightPin, 7, 1);
-InfluxData sensorData(5);
+InfluxData sensorData(1);
+
 
 void setup() {
   Serial.begin(115200);
@@ -248,18 +327,20 @@ void setup() {
   pinMode(heatPin, OUTPUT);
   pinMode(fanOutPin, OUTPUT);
   //pinMode(fainInPin, OUTPUT);
-  pinMode(soilPin, INPUT);
+  pinMode(cap_soilPin, INPUT);
+  pinMode(res_soilPin, INPUT);
   pinMode(mistPin, OUTPUT);
   pinMode(waterPin, OUTPUT);
   pinMode(lightInterupt, INPUT);
-  pinMode(levelPin, INPUT);
-  pinMode(capPin, OUTPUT);
-  digitalWrite(capPin, HIGH);
+  pinMode(capOnPin, OUTPUT);
+  pinMode(resOnPin, OUTPUT);
+  digitalWrite(capOnPin, LOW);
+  digitalWrite(resOnPin, LOW);
   digitalWrite(lightPin, LOW);
   digitalWrite(heatPin, LOW);
   digitalWrite(fanOutPin, HIGH);
   //digitalWrite(fainInPin, HIGH);
-  ledcAttachPin(ledTest, 2);
+  ledcAttachPin(fanInTwo, 2);
   ledcSetup(4, 5000, 8);
   ledcWrite(4, 127);
   ledcAttachPin(fainInPin, 2);
@@ -349,11 +430,13 @@ void setup() {
   }
   mqtt_client.setServer(mqtt_server, 1883);
   mqtt_client.setCallback(callback);
+  ds_temp.begin();
 
 }
 
 unsigned long long recconectMillis = 0;
 int reconnectInterval = 600000;
+bool prevInterupt;
 unsigned long long previousMillis = 0;
 
 void loop() {
@@ -373,15 +456,20 @@ void loop() {
   }
   time_t now;
   time(&now);
-  if (digitalRead(lightInterupt))
+  bool interruptState = digitalRead(lightInterupt);
+  if (interruptState != prevInterupt)
   {
-    Serial.println("Interupted");
+    //Falling edge
+    if (interruptState){
+      Serial.println("Interupted");
+    }
+    prevInterupt = interruptState;
   }
   timeinfo = localtime(&now);
   growLights.Update();
+  capacativeMoisture.Update();
+  resistiveMoisture.Update();
   sensorData.Upload();
-
-  
 }
 
 
@@ -408,8 +496,6 @@ void reconnect() {
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqtt_client.state());
-      Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
     }
   }
 }
