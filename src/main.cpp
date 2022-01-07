@@ -4,7 +4,6 @@
 #include <InfluxDbCloud.h>
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
-// #include <TelnetStream.h>
 #include <ESPmDNS.h>
 #include "Wire.h"
 #include "time.h"
@@ -23,6 +22,7 @@
 #define mistPin 16
 #define waterPin 4
 #define lightInterupt 2
+#define ledTest 26
 
 WiFiMulti wifiMulti;
 AM232X AM2320;
@@ -31,6 +31,7 @@ Adafruit_BME280 bme;
 float slope = 2.48; // slope from linear fit
 float intercept = -0.72;
 
+int fanInSpeed = 127;
 //InfuxDB device name
 #define DEVICE "Siltumica_ESP32"
 // InfluxDB  server url. Don't use localhost, always server name or ip address.
@@ -187,7 +188,7 @@ class Lights
       {
         digitalWrite(light_pin, HIGH);
         digitalWrite(fanOutPin, HIGH);
-        digitalWrite(fainInPin, HIGH);
+        ledcWrite(2, fanInSpeed);
         digitalWrite(mistPin, HIGH);
       }
       else
@@ -201,7 +202,7 @@ class Lights
         {
           digitalWrite(lightPin, LOW);
           digitalWrite(fanOutPin, LOW);
-          digitalWrite(fainInPin, LOW);
+          ledcWrite(2, 0);
           digitalWrite(mistPin, LOW);
         }
     //Turn on at predefined interval
@@ -213,7 +214,7 @@ class Lights
       {
         digitalWrite(light_pin, HIGH);
         digitalWrite(fanOutPin, HIGH);
-        digitalWrite(fainInPin, HIGH);
+        ledcWrite(2, fanInSpeed);
         digitalWrite(mistPin, HIGH);
       }
       else
@@ -227,7 +228,7 @@ class Lights
         {
           digitalWrite(lightPin, LOW);
           digitalWrite(fanOutPin, LOW);
-          digitalWrite(fainInPin, LOW);
+          ledcWrite(2, 0);
           digitalWrite(mistPin, LOW);
         }
       }
@@ -247,7 +248,7 @@ void setup() {
   pinMode(lightPin, OUTPUT);
   pinMode(heatPin, OUTPUT);
   pinMode(fanOutPin, OUTPUT);
-  pinMode(fainInPin, OUTPUT);
+  //pinMode(fainInPin, OUTPUT);
   pinMode(soilPin, INPUT);
   pinMode(mistPin, OUTPUT);
   pinMode(waterPin, OUTPUT);
@@ -258,7 +259,13 @@ void setup() {
   digitalWrite(lightPin, LOW);
   digitalWrite(heatPin, LOW);
   digitalWrite(fanOutPin, HIGH);
-  digitalWrite(fainInPin, HIGH);
+  //digitalWrite(fainInPin, HIGH);
+  ledcAttachPin(ledTest, 2);
+  ledcSetup(4, 5000, 8);
+  ledcWrite(4, 127);
+  ledcAttachPin(fainInPin, 2);
+  ledcSetup(2, 22500, 8);
+  ledcWrite(2, 180);
   digitalWrite(mistPin, LOW);
   digitalWrite(waterPin, LOW);
   //setup bme280
@@ -374,7 +381,7 @@ void loop() {
   time(&now);
   if (digitalRead(lightInterupt))
   {
-    Serial.print("Interupted");
+    Serial.println("Interupted");
   }
   timeinfo = localtime(&now);
   growLights.Update();
