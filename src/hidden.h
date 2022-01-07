@@ -1,9 +1,0 @@
-const char INFLUXDB_TOKEN[] = ***REMOVED***;
-const char INFLUXDB_ORG[] = ***REMOVED***;
-const char SSID1[] = ***REMOVED***;
-const char PSK1[] = ***REMOVED***;
-const char SSID2[] = ***REMOVED***;
-const char PSK2[] = ***REMOVED***;
-const char SSID3[] = ***REMOVED***;
-const char PSK3[] = ***REMOVED***;
-const char OTA_PSK[] = ***REMOVED***
