@@ -10,6 +10,8 @@
 #include <AM232X.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include "OneWire.h"
+#include "DallasTemperature.h"
 #include "hidden.h"
 
 
