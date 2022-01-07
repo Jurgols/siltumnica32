@@ -10,6 +10,7 @@
 #include <AM232X.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include "hidden.h"
 
 
 #define lightPin 19
@@ -36,10 +37,6 @@ int fanInSpeed = 127;
 #define DEVICE "Siltumica_ESP32"
 // InfluxDB  server url. Don't use localhost, always server name or ip address.
 #define INFLUXDB_URL "https://europe-west1-1.gcp.cloud2.influxdata.com"
-// InfluxDB 2 server or cloud API authentication token
-#define INFLUXDB_TOKEN ***REMOVED***
-// InfluxDB 2 organization id
-#define INFLUXDB_ORG ***REMOVED***
 // InfluxDB 2 bucket name
 #define INFLUXDB_BUCKET "siltumnica"
 //Riga time
@@ -281,9 +278,9 @@ void setup() {
   // Connect WiFi
   Serial.println("Connecting to WiFi");
   WiFi.mode(WIFI_STA);
-  wifiMulti.addAP(***REMOVED***, ***REMOVED***);
-  wifiMulti.addAP(***REMOVED***, ***REMOVED***);
-  wifiMulti.addAP(***REMOVED***, ***REMOVED***);
+  wifiMulti.addAP(SSID1, PSK1);
+  wifiMulti.addAP(SSID2, PSK2);
+  wifiMulti.addAP(SSID3, PSK3);
   while (wifiMulti.run() != WL_CONNECTED) {
     Serial.print(".");
     delay(500);
@@ -297,12 +294,7 @@ void setup() {
   ArduinoOTA.setHostname("siltumnica32");
 
   // No authentication by default
-  ArduinoOTA.setPassword("esp8266");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
+  ArduinoOTA.setPassword(OTA_PSK);
   ArduinoOTA
     .onStart([]() {
       String type;
