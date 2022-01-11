@@ -36,12 +36,10 @@ AM232X AM2320;
 Adafruit_BME280 bme;
 // Volumetric water content calculation parameters
 float slope = 2.48; // slope from linear fit
-float intercept = -0.72;
+float intercept = -0.93;
 
 int fanInSpeed = 127;
 
-float cap_moisture;
-float res_moisture;
 //InfuxDB device name
 #define DEVICE "Siltumica_ESP32"
 // InfluxDB  server url. Don't use localhost, always server name or ip address.
@@ -166,7 +164,7 @@ void Update(){
         //soilvwc = constrain(map(analogRead(pin), 500, 3800, 100, 0),0,100);
          }
       else{
-        soilvwc = constrain(map(analogRead(pin), 550, 3800, 0, 100),0,100);
+        soilvwc = constrain(map(analogRead(pin), 550, 3800, 0, 50),0,100);
       }
       moistureEstimate = kalmanObj->updateEstimate(soilvwc);
       digitalWrite(powerPin, LOW);
@@ -183,8 +181,8 @@ void Update(){
 
 };
 
-SoilMoisture capacativeMoisture(cap_soilPin,capOnPin,1,5000,6,5,0.1);
-SoilMoisture resistiveMoisture(res_soilPin,resOnPin,0,5000,3,3,0.1);
+SoilMoisture capacativeMoisture(cap_soilPin,capOnPin,1,2000,6,5,0.005);
+SoilMoisture resistiveMoisture(res_soilPin,resOnPin,0,5000,5,3,0.01);
 
 class InfluxData
 {
@@ -200,6 +198,7 @@ class InfluxData
     unsigned long currentMillis = millis();
     if(currentMillis - previousMillis >= interval)
     {
+      ds_temp.begin();
       AM2320.begin();
       bme.takeForcedMeasurement();
       ds_temp.requestTemperatures();
@@ -314,8 +313,11 @@ class Lights
   }
 };
 
-Lights growLights(lightPin, 7, 1);
-InfluxData sensorData(1);
+
+//Light control class (Pin to control light, 24h begin, 24h stop)
+Lights growLights(lightPin, 7, 1);  //from 7 in the morning to 01 at night
+//Send data to InfluxDB cloud (minutes)
+InfluxData sensorData(1); //send data every minute
 
 
 void setup() {
