@@ -138,6 +138,7 @@ class SoilMoisture
  uint8_t pin;
  uint8_t powerPin;
  int sensorType;
+ unsigned int rawValue;
  private:
  SimpleKalmanFilter* kalmanObj;
  public:
@@ -151,6 +152,7 @@ class SoilMoisture
   this->sensorType = sensorType;
   previousMillis = interval;
   moistureEstimate = 0;
+  rawValue = 0;
  }
 
 void Update(){
@@ -160,10 +162,12 @@ void Update(){
     if(currentMillis - previousMillis >= interval2){
       float soilvwc;
       if(sensorType){
+        rawValue = analogRead(pin);
         soilvwc = soil_vwc(soil_voltage(pin));
         //soilvwc = constrain(map(analogRead(pin), 500, 3800, 100, 0),0,100);
          }
       else{
+        rawValue = analogRead(pin);
         soilvwc = constrain(map(analogRead(pin), 550, 3800, 0, 50),0,100);
       }
       moistureEstimate = kalmanObj->updateEstimate(soilvwc);
@@ -175,6 +179,9 @@ void Update(){
   }
   float readVWC(){
     return moistureEstimate;
+  }
+  int readRawValue(){
+    return rawValue;
   }
 
 
@@ -213,9 +220,11 @@ class InfluxData
       sensor.addField("air_temperature_out", bme.readTemperature());
       sensor.addField("air_humidity_out", bme.readHumidity());
       sensor.addField("soil_vwc", capacativeMoisture.readVWC());
+      sensor.addField("raw_soil_vwc", capacativeMoisture.readRawValue());
       Serial.print("Resistive InfluxDB: ");
       Serial.println(resistiveMoisture.readVWC());
       sensor.addField("resistive_soil_vwc", resistiveMoisture.readVWC());
+      sensor.addField("raw_resistive_soil_vwc", resistiveMoisture.readRawValue());
       if(tempC != DEVICE_DISCONNECTED_C){
           Serial.print("Temperature for the device 1 (index 0) is: ");
           sensor.addField("soil_temp", tempC);
