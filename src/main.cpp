@@ -164,10 +164,14 @@ void Update(){
       if(sensorType){
         rawValue = analogRead(pin);
         soilvwc = soil_vwc(soil_voltage(pin));
+        Serial.print("Capacative raw value:");
+        Serial.println(rawValue);
         //soilvwc = constrain(map(analogRead(pin), 500, 3800, 100, 0),0,100);
          }
       else{
         rawValue = analogRead(pin);
+        Serial.print("Resistive raw value:");
+        Serial.println(rawValue);
         soilvwc = constrain(map(analogRead(pin), 550, 3800, 0, 50),0,100);
       }
       moistureEstimate = kalmanObj->updateEstimate(soilvwc);
@@ -220,11 +224,9 @@ class InfluxData
       sensor.addField("air_temperature_out", bme.readTemperature());
       sensor.addField("air_humidity_out", bme.readHumidity());
       sensor.addField("soil_vwc", capacativeMoisture.readVWC());
-      sensor.addField("raw_soil_vwc", capacativeMoisture.readRawValue());
       Serial.print("Resistive InfluxDB: ");
       Serial.println(resistiveMoisture.readVWC());
       sensor.addField("resistive_soil_vwc", resistiveMoisture.readVWC());
-      sensor.addField("raw_resistive_soil_vwc", resistiveMoisture.readRawValue());
       if(tempC != DEVICE_DISCONNECTED_C){
           Serial.print("Temperature for the device 1 (index 0) is: ");
           sensor.addField("soil_temp", tempC);
