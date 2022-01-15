@@ -184,7 +184,6 @@ void Update(){
   }
 
 
-
 };
 
 class ClimateControl
@@ -201,22 +200,30 @@ class ClimateControl
   uint8_t fan1pwmCh;
   uint8_t fan2pwmCh;
   private:
+
+  //VPD high - lower temperature(turn on fan 50%(PID? sometime), heater off), increase humidity(turn on mister)
   void _vpd_high(){
 
   }
+  //VPD high and temp below min limit - increase temperature(turn off most fans, heater on) and increase humidity ( turn on mister)
   void _vpd_high_temp_low(){
 
   }
+
+  //VPD too high temp above limit - reduce temperature(turn on fans 100%, heater off), increase humidity(mister on)
   void _vpd_high_temp_high(){
 
   }
-  
+  //VPD too low - increase temperature(turn on heater), lower humidity(turn off mister, turn on fans 50%)
   void _vpd_low(){
 
   }
+
+  //VPD low temp below limit  - increase temperature(heater on, all fans off), reduce humidity(mister off)
   void _vpd_low_temp_low(){
 
   }
+  // VPD low temp above limit - reduce temperature(turn off heater, fans on 100&), reduce humidity(mister off)
   void _vpd_low_temp_high(){
 
   }
@@ -234,7 +241,9 @@ class ClimateControl
                    this->fan1pwmCh = fan1pwmCh;
                    this-> fan2pwmCh = fan2pwmCh;
   }
+  //Climate regulation state machine
   void Update(){
+    AM2320.begin();
 
   }
 
