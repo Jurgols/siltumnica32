@@ -34,6 +34,12 @@
 WiFiMulti wifiMulti;
 AM232X AM2320;
 Adafruit_BME280 bme;
+
+int minTemperature = 19;
+int maxTemperature = 29;
+float minVPD = 0.7;
+float maxVPD = 1.3;
+
 // Volumetric water content calculation parameters
 float slope = 2.48; // slope from linear fit
 float intercept = -0.93;
@@ -178,6 +184,59 @@ void Update(){
   }
 
 
+
+};
+
+class ClimateControl
+{
+  unsigned long interval;
+  unsigned long interval2;
+  unsigned long previousMillis;
+  int &_minTemp;
+  int &_maxTemp;
+  float &_minVPD;
+  float &_maxVPD;
+  uint8_t heater1pwmCh;
+  uint8_t fan0pwmCh;
+  uint8_t fan1pwmCh;
+  uint8_t fan2pwmCh;
+  private:
+  void _vpd_high(){
+
+  }
+  void _vpd_high_temp_low(){
+
+  }
+  void _vpd_high_temp_high(){
+
+  }
+  
+  void _vpd_low(){
+
+  }
+  void _vpd_low_temp_low(){
+
+  }
+  void _vpd_low_temp_high(){
+
+  }
+
+  public:
+  //ClimateControl constructor defines (int interval,int& minimum allowable temp,
+  //int& max allowable temperature, float& min allowable VPD, float& max allowable VPD,
+  //uint8 heater pwm ch, uint8 fan to ouside pwm ch, uint8 fan in 1 pwm ch, uint8 fan in 2 pwm ch)
+  ClimateControl(unsigned int interval, int& minTemp, int& maxTemp,
+                 float& minVPD, float& maxVPD, uint8_t heater1pwmCh,
+                 uint8_t fan0pwmCh, uint8_t fan1pwmCh, uint8_t fan2pwmCh)
+                 : _minTemp(minTemp), _maxTemp(maxTemp), _minVPD(minVPD), _maxVPD(maxVPD) {
+                   this->interval = interval;
+                   this->heater1pwmCh = heater1pwmCh;
+                   this->fan1pwmCh = fan1pwmCh;
+                   this-> fan2pwmCh = fan2pwmCh;
+  }
+  void Update(){
+
+  }
 
 };
 
