@@ -611,6 +611,7 @@ void loop() {
   capacativeMoisture.Update();
   resistiveMoisture.Update();
   sensorData.Upload();
+  climate.Update();
 }
 
 
