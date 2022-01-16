@@ -265,7 +265,7 @@ class ClimateControl
   //VPD too low - increase temperature(), lower humidity(turn off mister, turn on fans 50%)
   void _vpd_low(){
     ledcWrite(fan0pwmCh, 127);
-    ledcWrite(fan1pwmCh, 80);
+    ledcWrite(fan1pwmCh, 100);
     ledcWrite(fan2pwmCh, 80);
     digitalWrite(heatPin, LOW);
     digitalWrite(mistPin, LOW);
@@ -306,36 +306,41 @@ class ClimateControl
   }
   //Climate regulation state machine
   void Update(){
-    AM2320.begin();
-    float temp = AM2320.getTemperature();
-    float hum = AM2320.getHumidity();
-    float VPD = calculate_vpd(temp, hum);
-    if (VPD >= maxVPD){
-      if (temp >= _maxTemp){
-        _vpd_high_temp_high();
-      }
-      else if( temp <= _minTemp){
-        _vpd_high_temp_low();
-      }
-      else{
-        _vpd_high();
-      }
-
-    }
-    else if (VPD <= minVPD)
+    unsigned long currentMillis = millis();
+    if(currentMillis - previousMillis >= interval)
     {
-      if (temp >= _minTemp){
-        _vpd_low_temp_high();
-      }
-      else if( temp <= _minTemp){
-        _vpd_low_temp_low();
-      }
-      else{
-        _vpd_low();
-      }
-    }
-    //else do nothing
+      AM2320.begin();
+      float temp = AM2320.getTemperature();
+      float hum = AM2320.getHumidity();
+      float VPD = calculate_vpd(temp, hum);
+      if (VPD >= maxVPD){
+        if (temp >= _maxTemp){
+          _vpd_high_temp_high();
+        }
+        else if( temp <= _minTemp){
+          _vpd_high_temp_low();
+        }
+        else{
+          _vpd_high();
+        }
 
+      }
+      else if (VPD <= minVPD)
+      {
+        if (temp >= _maxTemp){
+          _vpd_low_temp_high();
+        }
+        else if( temp <= _minTemp){
+          _vpd_low_temp_low();
+        }
+        else{
+          _vpd_low();
+        }
+      }
+          //else do nothing
+      previousMillis = currentMillis;
+
+    }
   }
 
 };
@@ -422,9 +427,6 @@ class Lights
       if((timeinfo->tm_hour >= start_hour) || (timeinfo->tm_hour < end_hour))
       {
         digitalWrite(light_pin, HIGH);
-        digitalWrite(fanOutPin, HIGH);
-        ledcWrite(2, fanInSpeed);
-        digitalWrite(mistPin, HIGH);
       }
       else
       {
@@ -436,9 +438,6 @@ class Lights
         else
         {
           digitalWrite(lightPin, LOW);
-          digitalWrite(fanOutPin, LOW);
-          ledcWrite(2, 0);
-          digitalWrite(mistPin, LOW);
         }
     //Turn on at predefined interval
       }
@@ -448,9 +447,6 @@ class Lights
       if((timeinfo->tm_hour >=start_hour) && (timeinfo->tm_hour < end_hour))
       {
         digitalWrite(light_pin, HIGH);
-        digitalWrite(fanOutPin, HIGH);
-        ledcWrite(2, fanInSpeed);
-        digitalWrite(mistPin, HIGH);
       }
       else
       {
@@ -462,9 +458,6 @@ class Lights
         else
         {
           digitalWrite(lightPin, LOW);
-          digitalWrite(fanOutPin, LOW);
-          ledcWrite(2, 0);
-          digitalWrite(mistPin, LOW);
         }
       }
 
