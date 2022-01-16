@@ -37,7 +37,7 @@
 
 
 
-#define DS18_pin 12
+#define DS18_pin 14
 
 WiFiMulti wifiMulti;
 AM232X AM2320;
