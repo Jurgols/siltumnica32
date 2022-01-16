@@ -19,7 +19,7 @@
 #define lightPin 19
 #define heatPin 18
 #define fanOutPin 5
-#define fainInPin 17
+#define fanInPin 17
 #define cap_soilPin 34
 #define res_soilPin 35
 #define capOnPin 32
@@ -28,6 +28,14 @@
 #define waterPin 4
 #define lightInterupt 23
 #define fanInTwo 26
+//fan out
+#define fan0ch 4
+//fan in left
+#define fan1ch 3
+//fan in right
+#define fan2ch 2
+
+
 
 #define DS18_pin 12
 
@@ -137,6 +145,7 @@ void browseService(const char * service, const char * proto){
 
 class SoilMoisture
 {
+ //Member variables
  long interval;
  long interval2;
  unsigned long previousMillis;
@@ -145,10 +154,13 @@ class SoilMoisture
  uint8_t powerPin;
  int sensorType;
  private:
+ //Member object type class
  SimpleKalmanFilter* kalmanObj;
  public:
+ //construtor
  SoilMoisture(uint8_t analog_pin, uint8_t powerPin, int sensorType, unsigned int interval, int mea_err, int est_err, float variance)
  {
+  //create object add to member variabels
   kalmanObj = new SimpleKalmanFilter(mea_err, est_err, variance);
   this->interval = interval;
   this->interval2 = interval + 100;
@@ -161,7 +173,9 @@ class SoilMoisture
 
 void Update(){
   unsigned long currentMillis = millis();
+  //turn on at an interval
   if (currentMillis - previousMillis >= interval){
+    //turn on sensor to give it time to stabilize voltage
     digitalWrite(powerPin, HIGH);
     if(currentMillis - previousMillis >= interval2){
       float soilvwc;
@@ -203,52 +217,110 @@ class ClimateControl
 
   //VPD high - lower temperature(turn on fan 50%(PID? sometime), heater off), increase humidity(turn on mister)
   void _vpd_high(){
+    ledcWrite(fan0pwmCh, 180);
+    ledcWrite(fan1pwmCh, 127);
+    ledcWrite(fan2pwmCh, 127);
+    digitalWrite(heatPin, LOW);
+    digitalWrite(mistPin, HIGH);
 
   }
   //VPD high and temp below min limit - increase temperature(turn off most fans, heater on) and increase humidity ( turn on mister)
   void _vpd_high_temp_low(){
+    ledcWrite(fan0pwmCh, 127);
+    ledcWrite(fan1pwmCh, 0);
+    ledcWrite(fan2pwmCh, 0);
+    digitalWrite(heatPin, HIGH);
+    digitalWrite(mistPin, HIGH);
 
   }
 
   //VPD too high temp above limit - reduce temperature(turn on fans 100%, heater off), increase humidity(mister on)
   void _vpd_high_temp_high(){
+    ledcWrite(fan0pwmCh, 255);
+    ledcWrite(fan1pwmCh, 255);
+    ledcWrite(fan2pwmCh, 255);
+    digitalWrite(heatPin, LOW);
+    digitalWrite(mistPin, HIGH);
 
   }
-  //VPD too low - increase temperature(turn on heater), lower humidity(turn off mister, turn on fans 50%)
+  //VPD too low - increase temperature(), lower humidity(turn off mister, turn on fans 50%)
   void _vpd_low(){
+    ledcWrite(fan0pwmCh, 127);
+    ledcWrite(fan1pwmCh, 80);
+    ledcWrite(fan2pwmCh, 80);
+    digitalWrite(heatPin, LOW);
+    digitalWrite(mistPin, LOW);
 
   }
 
   //VPD low temp below limit  - increase temperature(heater on, all fans off), reduce humidity(mister off)
   void _vpd_low_temp_low(){
+    ledcWrite(fan0pwmCh, 0);
+    ledcWrite(fan1pwmCh, 0);
+    ledcWrite(fan2pwmCh, 0);
+    digitalWrite(heatPin, HIGH);
+    digitalWrite(mistPin, LOW);
 
   }
   // VPD low temp above limit - reduce temperature(turn off heater, fans on 100&), reduce humidity(mister off)
   void _vpd_low_temp_high(){
+    ledcWrite(fan0pwmCh, 255);
+    ledcWrite(fan1pwmCh, 180);
+    ledcWrite(fan2pwmCh, 180);
+    digitalWrite(heatPin, LOW);
+    digitalWrite(mistPin, LOW);
 
   }
 
   public:
   //ClimateControl constructor defines (int interval,int& minimum allowable temp,
   //int& max allowable temperature, float& min allowable VPD, float& max allowable VPD,
-  //uint8 heater pwm ch, uint8 fan to ouside pwm ch, uint8 fan in 1 pwm ch, uint8 fan in 2 pwm ch)
-  ClimateControl(unsigned int interval, int& minTemp, int& maxTemp,
-                 float& minVPD, float& maxVPD, uint8_t heater1pwmCh,
-                 uint8_t fan0pwmCh, uint8_t fan1pwmCh, uint8_t fan2pwmCh)
+  //uint8 fan to ouside pwm ch, uint8 fan in 1 pwm ch, uint8 fan in 2 pwm ch)
+  ClimateControl(unsigned int interval, int& minTemp, int& maxTemp, float& minVPD,
+                 float& maxVPD, uint8_t fan0pwmCh, uint8_t fan1pwmCh, uint8_t fan2pwmCh)
+                 // add references before initialization
                  : _minTemp(minTemp), _maxTemp(maxTemp), _minVPD(minVPD), _maxVPD(maxVPD) {
                    this->interval = interval;
-                   this->heater1pwmCh = heater1pwmCh;
+                   this-> fan0pwmCh = fan0pwmCh;
                    this->fan1pwmCh = fan1pwmCh;
                    this-> fan2pwmCh = fan2pwmCh;
   }
   //Climate regulation state machine
   void Update(){
     AM2320.begin();
+    float temp = AM2320.getTemperature();
+    float hum = AM2320.getHumidity();
+    float VPD = calculate_vpd(temp, hum);
+    if (VPD >= maxVPD){
+      if (temp >= _maxTemp){
+        _vpd_high_temp_high();
+      }
+      else if( temp <= _minTemp){
+        _vpd_high_temp_low();
+      }
+      else{
+        _vpd_high();
+      }
+
+    }
+    else if (VPD <= minVPD)
+    {
+      if (temp >= _minTemp){
+        _vpd_low_temp_high();
+      }
+      else if( temp <= _minTemp){
+        _vpd_low_temp_low();
+      }
+      else{
+        _vpd_low();
+      }
+    }
+    //else do nothing
 
   }
 
 };
-
+//initialize soil sensor class before class that needs soil sensor data
 SoilMoisture capacativeMoisture(cap_soilPin,capOnPin,1,2000,6,5,0.005);
 SoilMoisture resistiveMoisture(res_soilPin,resOnPin,0,5000,5,3,0.01);
 
@@ -387,16 +459,16 @@ Lights growLights(lightPin, 7, 1);  //from 7 in the morning to 01 at night
 //Send data to InfluxDB cloud (minutes)
 InfluxData sensorData(1); //send data every minute
 
+ClimateControl climate(5000, minTemperature, maxTemperature, minVPD, maxVPD, fan0ch, fan1ch, fan2ch);
+
 
 void setup() {
   Serial.begin(115200);
   Wire.begin();
-  //TelnetStream.begin();
-  //Default pin states
+  //Default pin modes and states
   pinMode(lightPin, OUTPUT);
   pinMode(heatPin, OUTPUT);
   pinMode(fanOutPin, OUTPUT);
-  //pinMode(fainInPin, OUTPUT);
   pinMode(cap_soilPin, INPUT);
   pinMode(res_soilPin, INPUT);
   pinMode(mistPin, OUTPUT);
@@ -408,16 +480,16 @@ void setup() {
   digitalWrite(resOnPin, LOW);
   digitalWrite(lightPin, LOW);
   digitalWrite(heatPin, LOW);
-  digitalWrite(fanOutPin, HIGH);
-  //digitalWrite(fainInPin, HIGH);
-  ledcAttachPin(fanInTwo, 2);
-  ledcSetup(4, 5000, 8);
-  ledcWrite(4, 127);
-  ledcAttachPin(fainInPin, 2);
-  ledcSetup(2, 22500, 8);
-  ledcWrite(2, 180);
   digitalWrite(mistPin, LOW);
   digitalWrite(waterPin, LOW);
+  //PWM setup
+  ledcAttachPin(fanInTwo, fan2ch);
+  ledcAttachPin(fanOutPin, fan0ch);
+  ledcAttachPin(fanInPin, fan1ch);
+  ledcSetup(fan2ch, 22500, 8);
+  ledcSetup(fan1ch, 22500, 8);
+  ledcSetup(fan0ch, 22500, 8);
+  
   //setup bme280
   if (! bme.begin(0x76, &Wire)) {
         Serial.println("Could not find a valid BME280 sensor, check wiring!");
@@ -446,7 +518,6 @@ void setup() {
   // Hostname defaults to esp3232-[MAC]
   ArduinoOTA.setHostname("siltumnica32");
 
-  // No authentication by default
   ArduinoOTA.setPassword(OTA_PSK);
   ArduinoOTA
     .onStart([]() {
