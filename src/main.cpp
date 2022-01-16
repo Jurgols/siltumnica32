@@ -88,6 +88,10 @@ OneWire oneWire(DS18_pin);
 // pass onewire object to Dallas Temp class
 DallasTemperature ds_temp(&oneWire);
 
+float float_map(float x, float in_min, float in_max, float out_min, float out_max){
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 //Saturation vapor pressure
 float calculate_svp(float temp){
   float leaf_temp = temp - 2.0;
@@ -153,9 +157,14 @@ class SoilMoisture
  uint8_t pin;
  uint8_t powerPin;
  int sensorType;
+ unsigned int rawValue;
  private:
  //Member object type class
  SimpleKalmanFilter* kalmanObj;
+ private:
+ float _function(float x, float a, float b){
+   return a*exp(b*x);
+ }
  public:
  //construtor
  SoilMoisture(uint8_t analog_pin, uint8_t powerPin, int sensorType, unsigned int interval, int mea_err, int est_err, float variance)
@@ -169,6 +178,7 @@ class SoilMoisture
   this->sensorType = sensorType;
   previousMillis = interval;
   moistureEstimate = 0;
+  rawValue = 0;
  }
 
 void Update(){
@@ -180,11 +190,17 @@ void Update(){
     if(currentMillis - previousMillis >= interval2){
       float soilvwc;
       if(sensorType){
-        soilvwc = soil_vwc(soil_voltage(pin));
+        rawValue = analogRead(pin);
+        soilvwc = constrain(_function(analogRead(pin), 285,-0.000767), 0, 100);
+        //Serial.print("Capacative raw value:");
+        //Serial.println(rawValue);
         //soilvwc = constrain(map(analogRead(pin), 500, 3800, 100, 0),0,100);
          }
       else{
-        soilvwc = constrain(map(analogRead(pin), 550, 3800, 0, 50),0,100);
+        rawValue = analogRead(pin);
+        //Serial.print("Resistive raw value:");
+        //Serial.println(rawValue);
+        soilvwc = constrain(_function(analogRead(pin), 4.66, 0.000949),0,100);
       }
       moistureEstimate = kalmanObj->updateEstimate(soilvwc);
       digitalWrite(powerPin, LOW);
@@ -195,6 +211,9 @@ void Update(){
   }
   float readVWC(){
     return moistureEstimate;
+  }
+  int readRawValue(){
+    return rawValue;
   }
 
 
