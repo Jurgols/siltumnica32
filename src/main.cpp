@@ -18,6 +18,7 @@
 
 #define lightPin 19
 #define heatPin 18
+#define uvLight 2
 #define fanOutPin 5
 #define fanInPin 17
 #define cap_soilPin 34
@@ -25,7 +26,7 @@
 #define capOnPin 32
 #define resOnPin 33
 #define mistPin 16
-#define waterPin 4
+#define waterPin 25
 #define lightInterupt 23
 #define fanInTwo 26
 //fan out
@@ -34,6 +35,7 @@
 #define fan1ch 3
 //fan in right
 #define fan2ch 2
+#define uvLEDch 5
 
 
 
@@ -43,8 +45,8 @@ WiFiMulti wifiMulti;
 AM232X AM2320;
 Adafruit_BME280 bme;
 
-int minTemperature = 19;
-int maxTemperature = 29;
+int minTemperature = 16;
+int maxTemperature = 26;
 float minVPD = 0.7;
 float maxVPD = 1.3;
 
@@ -57,7 +59,7 @@ int fanInSpeed = 127;
 //InfuxDB device name
 #define DEVICE "Siltumica_ESP32"
 // InfluxDB  server url. Don't use localhost, always server name or ip address.
-#define INFLUXDB_URL "https://europe-west1-1.gcp.cloud2.influxdata.com"
+#define INFLUXDB_URL "http://192.168.10.1:8086"
 // InfluxDB 2 bucket name
 #define INFLUXDB_BUCKET "siltumnica"
 //Riga time
@@ -70,12 +72,14 @@ InfluxDBClient client(INFLUXDB_URL, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_TOKE
 Point sensor("microclimate");
 char hostString[16] = {0};
 
-const char* mqtt_server = "192.168.88.192";
-//char mqtt_server[];
-//mqtt message buffer size
-#define MSG_BUFFER_SIZE  (50)
-unsigned long lastMsg = 0;
-char msg[MSG_BUFFER_SIZE];
+// const char* mqtt_server = "192.168.88.192";
+// //char mqtt_server[];
+// //mqtt message buffer size
+// #define MSG_BUFFER_SIZE  (50)
+// unsigned long lastMsg = 0;
+// char msg[MSG_BUFFER_SIZE];
+
+
 //init WiFi
 WiFiClient espClient;
 // init Mqtt client
@@ -162,8 +166,8 @@ class SoilMoisture
  //Member object type class
  SimpleKalmanFilter* kalmanObj;
  private:
- float _function(float x, float a, float b){
-   return a*exp(b*x);
+ float _function(float x){ 
+   return 5.5667*pow(x,3) - 19.6738*pow(x,2) + 31.0893*x - 6.7511;
  }
  public:
  //construtor
@@ -191,7 +195,7 @@ void Update(){
       float soilvwc;
       if(sensorType){
         rawValue = analogRead(pin);
-        soilvwc = constrain(_function(analogRead(pin), 285,-0.000767), 0, 100);
+        soilvwc = constrain(_function(soil_voltage(pin)), 0, 100);
         //Serial.print("Capacative raw value:");
         //Serial.println(rawValue);
         //soilvwc = constrain(map(analogRead(pin), 500, 3800, 100, 0),0,100);
@@ -200,7 +204,7 @@ void Update(){
         rawValue = analogRead(pin);
         //Serial.print("Resistive raw value:");
         //Serial.println(rawValue);
-        soilvwc = constrain(_function(analogRead(pin), 4.66, 0.000949),0,100);
+        soilvwc = constrain(map(rawValue, 100, 3500, 0, 100),0,100);
       }
       moistureEstimate = kalmanObj->updateEstimate(soilvwc);
       digitalWrite(powerPin, LOW);
@@ -379,7 +383,7 @@ class InfluxData
       sensor.addField("soil_vwc", capacativeMoisture.readVWC());
       Serial.print("Resistive InfluxDB: ");
       Serial.println(resistiveMoisture.readVWC());
-      sensor.addField("resistive_soil_vwc", resistiveMoisture.readVWC());
+      // sensor.addField("resistive_soil_vwc", resistiveMoisture.readVWC());
       if(tempC != DEVICE_DISCONNECTED_C){
           Serial.print("Temperature for the device 1 (index 0) is: ");
           sensor.addField("soil_temp", tempC);
@@ -407,37 +411,71 @@ class InfluxData
   }
 
 };
+
+class Watering
+{
+  int watering_millis;
+  uint8_t pump_pin;
+  unsigned long previousMillis = 0;
+  ulong interval;
+  public: Watering(uint8_t pump_pin, long watering_sec, uint interval_h){
+    this-> watering_millis = watering_sec * 1000;
+    this-> pump_pin = pump_pin;
+    this-> interval = interval_h * 3600000;
+  }
+  void Update(float VWC_modifier){
+    unsigned long currentMillis = millis();
+    if(currentMillis - previousMillis >= interval){
+      int pump_interval = watering_millis * constrain(float_map(VWC_modifier,10,50,1,0.1), 0.1, 1);
+      digitalWrite(pump_pin, HIGH);
+      if(currentMillis - previousMillis >= interval + pump_interval){
+        digitalWrite(pump_pin, LOW);
+      }
+      
+      //previousMillis = currentMillis;
+    }
+
+  }
+
+
+};
 class Lights
 {
   int end_hour;
-  char light_pin;
+  char led_pin;
+  char uv_ledch;
   int start_hour;
+  int intensity;
   public:
-  Lights(char out_pin, int start_h, int end_h)
+  Lights(unsigned char led_pin,  unsigned char uv_ledch, unsigned char intensity, int start_h, int end_h)
   {
-    light_pin = out_pin;
+    this->led_pin = led_pin;
+    this->uv_ledch = uv_ledch;
     start_hour = start_h;
     end_hour = end_h;
+    this->intensity = intensity;
   }
   void Update()
   {
     
-    if(start_hour >= end_hour)
+    if(start_hour >= end_hour) // How time is passed to class.
     {
       if((timeinfo->tm_hour >= start_hour) || (timeinfo->tm_hour < end_hour))
       {
-        digitalWrite(light_pin, HIGH);
+        digitalWrite(led_pin, HIGH);
+        ledcWrite(uvLEDch, intensity);
       }
       else
       {
         //Turn on light when RPi is taking picture
         if (digitalRead(lightInterupt))
         {
-          digitalWrite(lightPin, HIGH);
+          digitalWrite(led_pin, HIGH);
         }
         else
         {
-          digitalWrite(lightPin, LOW);
+          digitalWrite(led_pin, LOW);
+          ledcWrite(uvLEDch, 0);
         }
     //Turn on at predefined interval
       }
@@ -446,18 +484,20 @@ class Lights
     {
       if((timeinfo->tm_hour >=start_hour) && (timeinfo->tm_hour < end_hour))
       {
-        digitalWrite(light_pin, HIGH);
+        digitalWrite(led_pin, HIGH);
+        ledcWrite(uvLEDch, intensity);
       }
       else
       {
         //Turn on light when RPi is taking picture
         if (digitalRead(lightInterupt))
         {
-          digitalWrite(lightPin, HIGH);
+          digitalWrite(led_pin, HIGH);
         }
         else
         {
-          digitalWrite(lightPin, LOW);
+          digitalWrite(led_pin, LOW);
+          ledcWrite(uvLEDch, 0);
         }
       }
 
@@ -467,9 +507,11 @@ class Lights
 
 
 //Light control class (Pin to control light, 24h begin, 24h stop)
-Lights growLights(lightPin, 7, 1);  //from 7 in the morning to 01 at night
+Lights growLights(lightPin, uvLight,255 , 1, 7);  //from 7 in the morning to 01 at night
 //Send data to InfluxDB cloud (minutes)
 InfluxData sensorData(1); //send data every minute
+
+Watering watering(waterPin,6,24);
 
 ClimateControl climate(5000, minTemperature, maxTemperature, minVPD, maxVPD, fan0ch, fan1ch, fan2ch);
 
@@ -498,6 +540,7 @@ void setup() {
   ledcAttachPin(fanInTwo, fan2ch);
   ledcAttachPin(fanOutPin, fan0ch);
   ledcAttachPin(fanInPin, fan1ch);
+  ledcAttachPin(uvLight, uvLEDch);
   ledcSetup(fan2ch, 22500, 8);
   ledcSetup(fan1ch, 22500, 8);
   ledcSetup(fan0ch, 22500, 8);
@@ -516,8 +559,8 @@ void setup() {
   Serial.println("Connecting to WiFi");
   WiFi.mode(WIFI_STA);
   wifiMulti.addAP(SSID1, PSK1);
-  wifiMulti.addAP(SSID2, PSK2);
-  wifiMulti.addAP(SSID3, PSK3);
+  //wifiMulti.addAP(SSID2, PSK2);
+  //wifiMulti.addAP(SSID3, PSK3);
   while (wifiMulti.run() != WL_CONNECTED) {
     Serial.print(".");
     delay(500);
@@ -581,8 +624,8 @@ void setup() {
     Serial.print("InfluxDB connection failed: ");
     Serial.println(client.getLastErrorMessage());
   }
-  mqtt_client.setServer(mqtt_server, 1883);
-  mqtt_client.setCallback(callback);
+  //mqtt_client.setServer(mqtt_server, 1883);
+  //mqtt_client.setCallback(callback);
   ds_temp.begin();
 
 }
@@ -621,7 +664,8 @@ void loop() {
   timeinfo = localtime(&now);
   growLights.Update();
   capacativeMoisture.Update();
-  resistiveMoisture.Update();
+  //resistiveMoisture.Update();
+  watering.Update(capacativeMoisture.readVWC());
   sensorData.Upload();
   climate.Update();
 }
