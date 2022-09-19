@@ -168,6 +168,8 @@ Raspberry Pi foto ar intervālu tiek uzņeti caur Python valodā rakstītu skrip
 Pašus timelapse video veidoju ar ffmpeg programmu:
 ![ffmpeg komanda](images/image19.png "ffmpeg komanda")
 
+```ffmpeg -framerate 24 -pattern_type glob -i "~/Pics/*jpg" -s:v 1920:1440 -c:v libx264 -crf 17 -pix_fmt yuv420p ~/Video/siltumnica_timelapse.mp4```
+
 
 Timelapse video 1 mēneša periodā:
 
